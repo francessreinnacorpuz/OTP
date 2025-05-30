@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OTP Email Verification Demo</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+      font-family: 'Poppins', sans-serif;
+      color: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 420px;
+      padding: 30px 40px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+    }
+
+    label {
+      display: block;
+      text-align: left;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    input[type="email"],
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+      transition: box-shadow 0.3s ease;
+    }
+    input[type="email"]:focus,
+    input[type="text"]:focus {
+      box-shadow: 0 0 8px #2575fc;
+    }
+
+    button {
+      background: #2575fc;
+      color: white;
+      border: none;
+      padding: 14px 0;
+      font-size: 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      transition: background-color 0.3s ease;
+    }
+    button:hover:not(:disabled) {
+      background: #1a51b8;
+    }
+    button:disabled {
+      background: #6a79c6;
+      cursor: not-allowed;
+    }
+
+    .message {
+      margin-top: 20px;
+      font-weight: 600;
+      font-size: 1rem;
+      min-height: 24px;
+    }
+
+    .email-sent-box {
+      margin-bottom: 20px;
+      background: rgba(255,255,255,0.15);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      word-wrap: break-word;
+      user-select: text;
+    }
+
+    .timer {
+      margin-top: -15px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
+      color: #cfcfcf;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" aria-label="OTP Email Verification">
+    <h1>OTP Email Verification</h1>
+
+    <!-- Step 1: Input Email -->
+    <div id="step-email">
+      <label for="emailInput">Enter Your Email</label>
+      <input type="email" id="emailInput" placeholder="your.email@example.com" required aria-required="true" />
+      <button id="sendOtpBtn" aria-label="Send OTP to email">Send OTP</button>
+      <div class="message" id="emailError" role="alert" aria-live="assertive"></div>
+    </div>
+
+    <!-- Step 2: Show OTP sent and input OTP -->
+    <div id="step-otp" style="display:none;">
+      <div class="email-sent-box" aria-live="polite" id="emailSentBox">
+        <!-- Show 'Email sent with OTP' message here -->
+      </div>
+
+      <label for="otpInput">Enter OTP</label>
+      <input type="text" id="otpInput" maxlength="6" placeholder="6-digit OTP" inputmode="numeric" autocomplete="one-time-code" />
+      <button id="verifyOtpBtn" aria-label="Verify OTP">Verify OTP</button>
+      <div class="timer" id="resendTimer" aria-live="polite"></div>
+      <button id="resendOtpBtn" style="display:none; margin-top:10px;" aria-label="Resend OTP">Resend OTP</button>
+      <div class="message" id="otpMessage" role="alert" aria-live="assertive"></div>
+    </div>
+
+    <!-- Step 3: Success message -->
+    <div id="step-success" style="display:none;">
+      <h2 style="color:#4caf50;">&#10004; Email Verified Successfully!</h2>
+      <p>Thank you for verifying your email.</p>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      // Element references
+      const emailInput = document.getElementById('emailInput');
+      const sendOtpBtn = document.getElementById('sendOtpBtn');
+      const emailError = document.getElementById('emailError');
+
+      const stepEmail = document.getElementById('step-email');
+      const stepOtp = document.getElementById('step-otp');
+      const stepSuccess = document.getElementById('step-success');
+
+      const emailSentBox = document.getElementById('emailSentBox');
+      const otpInput = document.getElementById('otpInput');
+      const verifyOtpBtn = document.getElementById('verifyOtpBtn');
+      const otpMessage = document.getElementById('otpMessage');
+      const resendTimer = document.getElementById('resendTimer');
+      const resendOtpBtn = document.getElementById('resendOtpBtn');
+
+      let generatedOtp = null;
+      let userEmail = null;
+      let resendCountdown = null;
+      const RESEND_WAIT = 30; // seconds
+
+      // Utility: Generate a 6-digit numeric OTP as string
+      function generateOtp() {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+      }
+
+      // Utility: Validate email format
+      function isValidEmail(email) {
+        // Simple email regex
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
+      }
+
+      // Start resend timer
+      function startResendTimer() {
+        let timeLeft = RESEND_WAIT;
+        resendOtpBtn.style.display = 'none';
+        resendTimer.textContent = `You can resend OTP in ${timeLeft} seconds`;
+        resendCountdown = setInterval(() => {
+          timeLeft--;
+          if(timeLeft > 0) {
+            resendTimer.textContent = `You can resend OTP in ${timeLeft} seconds`;
+          } else {
+            clearInterval(resendCountdown);
+            resendTimer.textContent = '';
+            resendOtpBtn.style.display = 'inline-block';
+          }
+        }, 1000);
+      }
+
+      // Event: Send OTP button
+      sendOtpBtn.addEventListener('click', () => {
+        const email = emailInput.value.trim();
+        emailError.textContent = '';
+        if (!email) {
+          emailError.textContent = 'Please enter your email.';
+          return;
+        }
+        if (!isValidEmail(email)) {
+          emailError.textContent = 'Please enter a valid email address.';
+          return;
+        }
+
+        // Generate OTP
+        generatedOtp = generateOtp();
+        userEmail = email;
+
+        // Simulate sending email by showing OTP in the box
+        emailSentBox.textContent = `An OTP has been sent to your email: ${userEmail}\n\n` +
+          `For demo purposes, your OTP is: ${generatedOtp}`;
+
+        // Show OTP step, hide email step
+        stepEmail.style.display = 'none';
+        stepOtp.style.display = 'block';
+        otpInput.value = '';
+        otpMessage.textContent = '';
+
+        // Start timer for resend
+        startResendTimer();
+      });
+
+      // Event: Verify OTP button
+      verifyOtpBtn.addEventListener('click', () => {
+        const enteredOtp = otpInput.value.trim();
+        otpMessage.style.color = '#f44336'; // red by default error
+
+        if (!enteredOtp) {
+          otpMessage.textContent = 'Please enter the OTP.';
+          return;
+        }
+        if (enteredOtp.length !== 6 || !/^\d{6}$/.test(enteredOtp)) {
+          otpMessage.textContent = 'OTP must be 6 digits.';
+          return;
+        }
+        if (enteredOtp !== generatedOtp) {
+          otpMessage.textContent = 'Invalid OTP. Please try again.';
+          return;
+        }
+
+        // OTP verified successfully
+        otpMessage.style.color = '#4caf50'; // green
+        otpMessage.textContent = 'OTP verified successfully!';
+
+        // Show success step after short delay
+        setTimeout(() => {
+          stepOtp.style.display = 'none';
+          stepSuccess.style.display = 'block';
+        }, 1000);
+      });
+
+      // Event: Resend OTP button
+      resendOtpBtn.addEventListener('click', () => {
+        // Regenerate OTP
+        generatedOtp = generateOtp();
+        // Show new OTP in email box again (simulation)
+        emailSentBox.textContent = `An OTP has been resent to your email: ${userEmail}\n\n` +
+          `For demo purposes, your new OTP is: ${generatedOtp}`;
+
+        otpInput.value = '';
+        otpMessage.textContent = '';
+        resendOtpBtn.style.display = 'none';
+
+        // Restart timer
+        startResendTimer();
+      });
+    })();
+  </script>
+</body>
+</html>
+
